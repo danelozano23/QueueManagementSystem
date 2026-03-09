@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RHU Queue Management System</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --primary:#0a6e4f;--primary-light:#0d8f65;--primary-dark:#074d37;
+  --accent:#f0a500;--bg:#f0f4f2;--surface:#fff;--surface2:#e8f0ec;
+  --text:#0f1e18;--text-muted:#4a7060;--border:#c5ddd3;--red:#d94f3d;
+  --shadow:0 4px 24px rgba(10,110,79,0.10);--radius:16px;--radius-sm:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+h1,h2,h3,h4{font-family:'Sora',sans-serif;}
+
+/* NAV */
+.nav{background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:60px;position:sticky;top:0;z-index:200;box-shadow:0 2px 16px rgba(0,0,0,0.18);}
+.nav-brand{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:700;font-size:1rem;}
+.nav-brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+.nav-right{display:flex;align-items:center;gap:10px;}
+.nav-time{font-size:0.82rem;opacity:0.75;letter-spacing:0.02em;}
+.nav-sync{display:flex;align-items:center;gap:6px;font-size:0.78rem;background:rgba(255,255,255,0.12);border-radius:100px;padding:4px 12px;cursor:pointer;transition:background 0.15s;}
+.nav-sync:hover{background:rgba(255,255,255,0.2);}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0;}
+.sync-dot.offline{background:#f87171;}
+.sync-dot.syncing{background:var(--accent);animation:pulse 0.8s infinite;}
+
+/* BURGER */
+.burger-btn{background:rgba(255,255,255,0.12);border:none;border-radius:8px;width:40px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;transition:background 0.18s;}
+.burger-btn:hover{background:rgba(255,255,255,0.22);}
+.burger-btn span{display:block;width:20px;height:2px;background:#fff;border-radius:2px;transition:all 0.25s cubic-bezier(0.4,0,0.2,1);transform-origin:center;}
+.burger-btn.open span:nth-child(1){transform:translateY(7px) rotate(45deg);}
+.burger-btn.open span:nth-child(2){opacity:0;transform:scaleX(0);}
+.burger-btn.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
+
+/* DRAWER */
+.nav-drawer{position:fixed;top:60px;right:0;width:250px;background:var(--primary-dark);box-shadow:-4px 0 24px rgba(0,0,0,0.22);z-index:199;border-radius:0 0 0 var(--radius);transform:translateX(110%);transition:transform 0.28s cubic-bezier(0.4,0,0.2,1);overflow:hidden;}
+.nav-drawer.open{transform:translateX(0);}
+.nav-drawer-item{display:flex;align-items:center;gap:14px;padding:16px 22px;color:rgba(255,255,255,0.8);cursor:pointer;font-size:0.95rem;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.07);transition:all 0.15s;user-select:none;}
+.nav-drawer-item:last-child{border-bottom:none;}
+.nav-drawer-item:hover{background:rgba(255,255,255,0.1);color:#fff;}
+.nav-drawer-item.active{background:rgba(255,255,255,0.15);color:#fff;font-weight:700;}
+.nav-drawer-item .di-icon{font-size:1.1rem;width:24px;text-align:center;}
+.drawer-divider{height:1px;background:rgba(255,255,255,0.15);margin:4px 0;}
+.drawer-overlay{display:none;position:fixed;inset:0;z-index:198;}
+.drawer-overlay.open{display:block;}
+
+/* VIEWS */
+.view{display:none;min-height:calc(100vh - 60px);}
+.view.active{display:block;}
+
+/* ===== SETUP WIZARD ===== */
+.setup-overlay{position:fixed;inset:0;background:rgba(7,77,55,0.96);z-index:5000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.setup-overlay.hidden{display:none;}
+.setup-box{background:#fff;border-radius:24px;max-width:680px;width:95%;box-shadow:0 32px 80px rgba(0,0,0,0.4);overflow:hidden;}
+.setup-header{background:var(--primary);padding:32px;text-align:center;color:#fff;}
+.setup-header h2{font-size:1.5rem;margin-bottom:6px;}
+.setup-header p{opacity:0.85;font-size:0.9rem;}
+.setup-body{padding:32px;}
+.setup-step{display:none;}
+.setup-step.active{display:block;}
+.setup-step h3{font-size:1.1rem;color:var(--primary-dark);margin-bottom:6px;}
+.setup-step p{font-size:0.88rem;color:var(--text-muted);margin-bottom:20px;line-height:1.6;}
+.setup-code{background:#0f1e18;color:#4ade80;border-radius:10px;padding:18px;font-family:'Courier New',monospace;font-size:0.78rem;line-height:1.7;overflow-x:auto;margin-bottom:16px;position:relative;}
+.setup-code .copy-btn{position:absolute;top:10px;right:10px;background:rgba(255,255,255,0.1);border:none;color:#fff;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;transition:background 0.15s;}
+.setup-code .copy-btn:hover{background:rgba(255,255,255,0.2);}
+.setup-instruction{background:var(--surface2);border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+.setup-instruction ol{padding-left:18px;}
+.setup-instruction li{font-size:0.88rem;color:var(--text);margin-bottom:8px;line-height:1.5;}
+.setup-instruction li strong{color:var(--primary-dark);}
+.setup-input-wrap{margin-bottom:20px;}
+.setup-input-wrap label{font-size:0.85rem;font-weight:600;color:var(--text);display:block;margin-bottom:8px;}
+.setup-input{width:100%;padding:12px 16px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:0.95rem;outline:none;transition:border-color 0.18s;}
+.setup-input:focus{border-color:var(--primary);}
+.setup-nav{display:flex;gap:12px;justify-content:flex-end;margin-top:8px;}
+.step-indicator{display:flex;gap:8px;justify-content:center;margin-bottom:24px;}
+.step-dot{width:10px;height:10px;border-radius:50%;background:var(--border);transition:background 0.2s;}
+.step-dot.active{background:var(--primary);}
+.step-dot.done{background:var(--primary-light);}
+.test-result{border-radius:10px;padding:14px 16px;font-size:0.88rem;margin-top:12px;display:none;}
+.test-result.success{background:#e6f4ee;color:var(--primary-dark);border:1px solid #7dc6a8;}
+.test-result.error{background:#fde8e6;color:var(--red);border:1px solid #f5b8b3;}
+
+/* KIOSK */
+.kiosk-wrap{max-width:860px;margin:0 auto;padding:36px 20px 60px;}
+.kiosk-header{text-align:center;margin-bottom:36px;}
+.rhu-badge{display:inline-flex;align-items:center;gap:8px;background:var(--primary);color:#fff;border-radius:100px;padding:6px 18px;font-size:0.82rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:16px;}
+.kiosk-header h1{font-size:2rem;color:var(--primary-dark);margin-bottom:8px;}
+.kiosk-header p{color:var(--text-muted);font-size:1rem;}
+.section-title{font-family:'Sora',sans-serif;font-size:1rem;font-weight:700;color:var(--primary-dark);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+.section-title::after{content:'';flex:1;height:1.5px;background:var(--border);border-radius:2px;}
+
+/* SERVICE GRID */
+.service-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:32px;}
+.service-card{border:2px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);padding:18px 10px 14px;text-align:center;cursor:pointer;transition:all 0.18s;user-select:none;position:relative;overflow:hidden;}
+.service-card:hover{border-color:var(--primary-light);box-shadow:0 4px 16px rgba(10,110,79,0.12);transform:translateY(-2px);}
+.service-card.selected{border-color:var(--primary);background:#e6f4ee;box-shadow:0 4px 16px rgba(10,110,79,0.18);}
+.service-card .badge{position:absolute;top:8px;right:8px;background:var(--primary);color:#fff;font-size:0.7rem;font-weight:700;border-radius:4px;padding:2px 6px;font-family:'Sora',sans-serif;}
+.service-card .svc-icon{font-size:2rem;margin-bottom:8px;display:block;}
+.service-card .svc-name{font-size:0.82rem;font-weight:600;color:var(--text);line-height:1.3;}
+.service-card.selected .svc-name{color:var(--primary-dark);}
+
+/* FORM */
+.form-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:32px;margin-bottom:20px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.form-group{display:flex;flex-direction:column;gap:6px;}
+.form-group.full{grid-column:1/-1;}
+.form-group label{font-size:0.85rem;font-weight:600;color:var(--text);}
+.form-group label .req{color:var(--red);margin-left:2px;}
+.form-group input,.form-group select,.form-group textarea{padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:0.93rem;color:var(--text);background:#fff;transition:border-color 0.18s,box-shadow 0.18s;outline:none;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(10,110,79,0.10);}
+.form-group textarea{resize:vertical;min-height:80px;}
+.char-count{font-size:0.75rem;color:var(--text-muted);text-align:right;margin-top:2px;}
+
+/* VISIT TYPE */
+.visit-type-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
+.vt-card{border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px 8px;text-align:center;cursor:pointer;transition:all 0.15s;user-select:none;}
+.vt-card:hover{border-color:var(--primary-light);transform:translateY(-1px);}
+.vt-card.selected{border-color:var(--primary);background:#e6f4ee;}
+.vt-card .vt-icon{font-size:1.6rem;margin-bottom:6px;display:block;}
+.vt-card .vt-label{font-size:0.82rem;font-weight:600;color:var(--text);}
+.vt-card.selected .vt-label{color:var(--primary-dark);}
+
+/* BUTTONS */
+.btn-primary{background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);padding:14px 32px;font-family:'Sora',sans-serif;font-size:1rem;font-weight:700;cursor:pointer;transition:all 0.18s;display:flex;align-items:center;gap:8px;}
+.btn-primary:hover{background:var(--primary-light);transform:translateY(-1px);box-shadow:0 6px 20px rgba(10,110,79,0.22);}
+.btn-primary:disabled{opacity:0.6;cursor:not-allowed;transform:none;}
+.btn-secondary{background:transparent;color:var(--primary);border:2px solid var(--primary);border-radius:var(--radius-sm);padding:12px 28px;font-family:'DM Sans',sans-serif;font-size:0.95rem;font-weight:600;cursor:pointer;transition:all 0.18s;}
+.btn-secondary:hover{background:var(--surface2);}
+.btn-sm{padding:8px 16px;font-size:0.85rem;border-radius:8px;}
+.privacy-note{font-size:0.82rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:14px;}
+.btn-row{display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;}
+.reset-link{font-size:0.85rem;color:var(--text-muted);cursor:pointer;text-decoration:underline;}
+.reset-link:hover{color:var(--primary);}
+
+/* RECEIPT MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+.modal-overlay.open{display:flex;}
+.receipt-modal{background:#fff;border-radius:var(--radius);max-width:400px;width:95%;box-shadow:0 24px 64px rgba(0,0,0,0.3);overflow:hidden;}
+.receipt-header{background:var(--primary);color:#fff;padding:24px;text-align:center;}
+.receipt-header h2{font-size:1.1rem;margin-bottom:4px;}
+.receipt-header p{font-size:0.82rem;opacity:0.85;}
+.receipt-body{padding:24px;}
+.thermal{font-family:'Courier New',monospace;font-size:0.88rem;background:#fff;border:1.5px dashed #ccc;border-radius:8px;padding:20px 16px;margin-bottom:20px;line-height:1.7;}
+.thermal .t-center{text-align:center;}
+.thermal .t-bold{font-weight:700;}
+.thermal .t-big{font-size:2.8rem;font-weight:900;letter-spacing:2px;font-family:'Sora',monospace;}
+.thermal .t-div{border-top:1px dashed #aaa;margin:10px 0;}
+.thermal .t-row{display:flex;justify-content:space-between;}
+.thermal .t-label{color:#666;font-size:0.78rem;}
+.receipt-actions{display:flex;gap:12px;}
+.receipt-actions button{flex:1;}
+
+/* QUEUE BOARD */
+.board-wrap{padding:28px 24px;max-width:1300px;margin:0 auto;}
+.board-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
+.board-top h2{font-size:1.5rem;color:var(--primary-dark);}
+.board-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+.stat-card{background:var(--surface);border-radius:var(--radius-sm);padding:18px 20px;box-shadow:var(--shadow);border-left:4px solid var(--primary);}
+.stat-card.orange{border-color:var(--accent);}
+.stat-card.red{border-color:var(--red);}
+.stat-card.blue{border-color:#3b82f6;}
+.stat-card .stat-num{font-family:'Sora',sans-serif;font-size:2rem;font-weight:800;color:var(--primary-dark);}
+.stat-card.orange .stat-num{color:#b97a00;}
+.stat-card.red .stat-num{color:var(--red);}
+.stat-card.blue .stat-num{color:#1d4ed8;}
+.stat-card .stat-label{font-size:0.8rem;color:var(--text-muted);font-weight:500;margin-top:2px;}
+
+/* SYNC BAR */
+.sync-bar{background:var(--surface);border-radius:var(--radius-sm);box-shadow:var(--shadow);padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.sync-bar .sb-label{font-size:0.85rem;font-weight:600;color:var(--text-muted);}
+.btn-sheets{background:#0f9d58;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.15s;}
+.btn-sheets:hover{background:#0b7d46;transform:translateY(-1px);}
+.btn-excel{background:#1d6f42;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all 0.15s;}
+.btn-excel:hover{background:#155a34;transform:translateY(-1px);}
+.sync-status-text{font-size:0.8rem;color:var(--text-muted);margin-left:4px;}
+.ml-auto{margin-left:auto;}
+
+.queue-filters{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+.filter-btn{padding:7px 16px;border-radius:100px;border:1.5px solid var(--border);background:#fff;font-size:0.83rem;font-weight:600;cursor:pointer;transition:all 0.15s;color:var(--text-muted);}
+.filter-btn:hover{border-color:var(--primary);color:var(--primary);}
+.filter-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+.queue-table-wrap{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;overflow-x:auto;}
+.queue-table{width:100%;border-collapse:collapse;min-width:700px;}
+.queue-table th{background:var(--primary-dark);color:#fff;font-family:'Sora',sans-serif;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.06em;padding:13px 16px;text-align:left;font-weight:600;}
+.queue-table td{padding:12px 16px;border-bottom:1px solid var(--surface2);font-size:0.9rem;vertical-align:middle;}
+.queue-table tr:last-child td{border-bottom:none;}
+.queue-table tr:hover td{background:#f5faf7;}
+.queue-num{font-family:'Sora',sans-serif;font-weight:800;font-size:1.1rem;color:var(--primary-dark);background:var(--surface2);border-radius:6px;padding:4px 10px;display:inline-block;}
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:100px;font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;}
+.status-badge.waiting{background:#fef9e6;color:#a07000;border:1px solid #f0c84a;}
+.status-badge.in-progress{background:#e6f4ee;color:var(--primary-dark);border:1px solid #7dc6a8;}
+.status-badge.done{background:#f0f0f0;color:#666;border:1px solid #ccc;}
+.status-badge.called{background:#e8f0fe;color:#1a56bd;border:1px solid #93b4f8;}
+.dot-pulse{width:7px;height:7px;border-radius:50%;display:inline-block;}
+.dot-pulse.yellow{background:#f0c84a;animation:pulse 1.2s infinite;}
+.dot-pulse.green{background:var(--primary);animation:pulse 1.2s infinite;}
+.dot-pulse.blue{background:#3b82f6;animation:pulse 1.2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+.action-btn{padding:6px 12px;border-radius:7px;border:none;font-size:0.8rem;font-weight:600;cursor:pointer;transition:all 0.15s;}
+.action-btn.call{background:#e8f0fe;color:#1a56bd;}
+.action-btn.call:hover{background:#1a56bd;color:#fff;}
+.action-btn.done{background:#e6f4ee;color:var(--primary-dark);}
+.action-btn.done:hover{background:var(--primary);color:#fff;}
+.action-btn.remove{background:#fde8e6;color:var(--red);}
+.action-btn.remove:hover{background:var(--red);color:#fff;}
+
+/* NURSE STATION */
+.nurse-wrap{padding:28px 24px;max-width:1100px;margin:0 auto;}
+.dept-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;}
+.dept-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.dept-card-header{background:var(--primary);color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;}
+.dept-card-header .dept-icon{font-size:1.5rem;}
+.dept-card-header .dept-name{font-family:'Sora',sans-serif;font-weight:700;font-size:1rem;}
+.dept-card-header .dept-count{margin-left:auto;background:rgba(255,255,255,0.2);border-radius:100px;padding:3px 12px;font-size:0.82rem;font-weight:700;}
+.dept-card-body{padding:16px 20px;}
+.dept-select-wrap{margin-bottom:14px;}
+.dept-select-wrap label{font-size:0.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;display:block;}
+.dept-select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.9rem;outline:none;}
+.dept-select:focus{border-color:var(--primary);}
+.dept-queue-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;}
+.dept-queue-item{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);}
+.dq-num{font-family:'Sora',sans-serif;font-weight:800;font-size:1rem;color:var(--primary-dark);min-width:52px;}
+.dq-info{flex:1;}
+.dq-name{font-weight:600;font-size:0.88rem;}
+.dq-meta{font-size:0.75rem;color:var(--text-muted);}
+.dept-done-btn{padding:6px 12px;background:var(--primary);color:#fff;border:none;border-radius:7px;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+.dept-done-btn:hover{background:var(--primary-light);}
+.dept-done-btn.waiting-btn{background:var(--accent);color:#3a2a00;}
+.dept-done-btn.waiting-btn:hover{background:#d49000;color:#fff;}
+.empty-dept{text-align:center;color:var(--text-muted);font-size:0.85rem;padding:24px 0;}
+.empty-dept .empty-icon{font-size:2rem;margin-bottom:6px;}
+
+/* DISPLAY BOARD */
+.display-wrap{background:var(--primary-dark);min-height:calc(100vh - 60px);padding:28px;}
+.display-header{text-align:center;margin-bottom:28px;}
+.display-header h1{font-size:1.8rem;color:#fff;letter-spacing:0.02em;}
+.display-header p{color:rgba(255,255,255,0.6);font-size:0.9rem;margin-top:4px;}
+.now-serving{background:var(--accent);border-radius:var(--radius);padding:28px;margin-bottom:24px;text-align:center;position:relative;overflow:hidden;transition:all 0.3s;}
+.now-serving.ringing{animation:ringFlash 0.4s ease 3;}
+@keyframes ringFlash{0%,100%{background:var(--accent);}50%{background:#fff3b0;box-shadow:0 0 60px rgba(240,165,0,0.7);}}
+.ns-bell{font-size:2.2rem;position:absolute;top:14px;right:20px;opacity:0;transition:opacity 0.3s;}
+.ns-bell.show{opacity:1;animation:bellSwing 0.35s ease 3;}
+@keyframes bellSwing{0%,100%{transform:rotate(0);}25%{transform:rotate(-22deg);}75%{transform:rotate(22deg);}}
+.ns-label{font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:rgba(0,0,0,0.5);margin-bottom:6px;}
+.ns-num{font-family:'Sora',sans-serif;font-size:5rem;font-weight:900;color:#1a0a00;letter-spacing:4px;line-height:1;}
+.ns-info{font-size:1rem;color:rgba(0,0,0,0.65);margin-top:8px;}
+.display-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;}
+.display-card{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:var(--radius-sm);padding:16px 14px;text-align:center;}
+.dc-dept{font-size:0.75rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px;}
+.dc-nums{font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:#fff;}
+.dc-next{color:rgba(255,255,255,0.55);font-size:0.78rem;margin-top:4px;}
+
+/* CALL OVERLAY */
+.call-overlay{display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.72);align-items:center;justify-content:center;backdrop-filter:blur(5px);}
+.call-overlay.show{display:flex;animation:fadeIn 0.2s ease;}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+.call-popup{background:var(--accent);border-radius:24px;padding:48px 56px;text-align:center;box-shadow:0 32px 80px rgba(0,0,0,0.45);animation:popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);}
+@keyframes popIn{from{transform:scale(0.7);opacity:0;}to{transform:scale(1);opacity:1;}}
+.call-popup .cp-bell{font-size:3.5rem;margin-bottom:12px;display:block;animation:bellSwing 0.35s ease infinite;}
+.call-popup .cp-now{font-size:0.9rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:rgba(0,0,0,0.45);margin-bottom:8px;}
+.call-popup .cp-num{font-family:'Sora',sans-serif;font-size:6rem;font-weight:900;color:#1a0a00;letter-spacing:6px;line-height:1;}
+.call-popup .cp-name{font-size:1.2rem;font-weight:600;color:rgba(0,0,0,0.65);margin-top:10px;}
+.call-popup .cp-svc{font-size:0.9rem;color:rgba(0,0,0,0.5);margin-top:4px;}
+.call-popup .cp-dismiss{margin-top:20px;font-size:0.8rem;color:rgba(0,0,0,0.4);}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--primary);color:#fff;border-radius:10px;padding:14px 22px;font-weight:600;font-size:0.9rem;box-shadow:0 8px 28px rgba(0,0,0,0.22);z-index:9999;transform:translateY(80px);opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);display:flex;align-items:center;gap:10px;max-width:360px;}
+.toast.show{transform:translateY(0);opacity:1;}
+
+/* LOADING SPINNER */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px;}
+
+@media print{
+  body>*:not(.modal-overlay){display:none!important;}
+  .modal-overlay{display:block!important;position:static!important;background:none!important;}
+  .receipt-modal{box-shadow:none!important;max-width:100%!important;}
+  .receipt-actions,.receipt-header{display:none!important;}
+  .thermal{border:none!important;}
+}
+@media(max-width:640px){
+  .form-grid{grid-template-columns:1fr;}
+  .board-stats{grid-template-columns:1fr 1fr;}
+  .service-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));}
+  .nav-time{display:none;}
+  .kiosk-header h1{font-size:1.5rem;}
+  .call-popup{padding:32px 28px;}
+  .call-popup .cp-num{font-size:4rem;}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== SETUP WIZARD ===== -->
+<div class="setup-overlay" id="setup-overlay">
+  <div class="setup-box">
+    <div class="setup-header">
+      <h2>⚙️ Google Sheets Setup</h2>
+      <p>Connect your queue system to a live Google Sheet in 3 steps</p>
+    </div>
+    <div class="setup-body">
+      <div class="step-indicator">
+        <div class="step-dot active" id="sdot-0"></div>
+        <div class="step-dot" id="sdot-1"></div>
+        <div class="step-dot" id="sdot-2"></div>
+      </div>
+
+      <!-- STEP 0: Create Sheet + Apps Script -->
+      <div class="setup-step active" id="step-0">
+        <h3>Step 1 — Create the Google Apps Script</h3>
+        <p>Open <strong>script.google.com</strong>, create a new project, paste the code below, then click <strong>Deploy → New Deployment → Web App</strong>. Set "Execute as" to <strong>Me</strong> and "Who has access" to <strong>Anyone</strong>. Copy the Web App URL.</p>
+        <div class="setup-code" id="apps-script-code">
+<button class="copy-btn" onclick="copyScript()">Copy</button>
+// RHU Queue — Google Apps Script Backend
+// Paste this entire file into script.google.com
+
+const SHEET_NAME = 'Queue';
+
+function doGet(e) {
+  return handleRequest(e);
+}
+function doPost(e) {
+  return handleRequest(e);
+}
+
+function handleRequest(e) {
+  const params = e.parameter;
+  const action = params.action;
+  let result;
+
+  try {
+    if (action === 'ping')        result = { ok: true, message: 'Connected!' };
+    else if (action === 'append') result = appendRow(params);
+    else if (action === 'update') result = updateRow(params);
+    else if (action === 'read')   result = readAll();
+    else if (action === 'delete') result = deleteRow(params);
+    else                          result = { ok: false, message: 'Unknown action' };
+  } catch(err) {
+    result = { ok: false, message: err.toString() };
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow([
+      'ID','Queue #','Code','Service','First Name','Last Name',
+      'Date of Birth','Sex','Civil Status','Contact No','PhilHealth No',
+      'Barangay','Visit Type','Chief Complaint','Notes',
+      'Status','Registered Time','Date','Last Updated'
+    ]);
+    sheet.setFrozenRows(1);
+    // Style header
+    const header = sheet.getRange(1,1,1,19);
+    header.setBackground('#074d37');
+    header.setFontColor('#ffffff');
+    header.setFontWeight('bold');
+    sheet.setColumnWidth(14, 300);
+    sheet.setColumnWidth(15, 200);
+  }
+  return sheet;
+}
+
+function appendRow(p) {
+  const sheet = getSheet();
+  const now = new Date().toLocaleString('en-PH');
+  sheet.appendRow([
+    p.id, p.queueNum, p.code, p.service,
+    p.fname, p.lname, p.dob, p.sex, p.civil,
+    p.contact, p.philhealth || '', p.barangay,
+    p.visitType, p.complaint, p.notes || '',
+    'Waiting', p.regTime, p.regDate, now
+  ]);
+  return { ok: true, message: 'Row added' };
+}
+
+function updateRow(p) {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(p.id)) {
+      const now = new Date().toLocaleString('en-PH');
+      // Status is column 16 (index 15), Last Updated column 19 (index 18)
+      sheet.getRange(i+1, 16).setValue(
+        p.status.charAt(0).toUpperCase() + p.status.slice(1).replace('-',' ')
+      );
+      sheet.getRange(i+1, 19).setValue(now);
+      return { ok: true, message: 'Row updated' };
+    }
+  }
+  return { ok: false, message: 'Row not found' };
+}
+
+function readAll() {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { ok: true, rows: [] };
+  const headers = data[0];
+  const rows = data.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+  return { ok: true, rows };
+}
+
+function deleteRow(p) {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(p.id)) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, message: 'Row deleted' };
+    }
+  }
+  return { ok: false, message: 'Row not found' };
+}
+        </div>
+        <div class="setup-nav">
+          <button class="btn-primary btn-sm" onclick="setupNext()">Next →</button>
+        </div>
+      </div>
+
+      <!-- STEP 1: Paste URL -->
+      <div class="setup-step" id="step-1">
+        <h3>Step 2 — Paste Your Web App URL</h3>
+        <div class="setup-instruction">
+          <ol>
+            <li>In Apps Script, click <strong>Deploy → New Deployment</strong></li>
+            <li>Choose type: <strong>Web App</strong></li>
+            <li>Set <strong>Execute as: Me</strong> and <strong>Who has access: Anyone</strong></li>
+            <li>Click <strong>Deploy</strong> and authorize permissions when prompted</li>
+            <li>Copy the <strong>Web App URL</strong> (starts with <code>https://script.google.com/macros/s/...</code>)</li>
+          </ol>
+        </div>
+        <div class="setup-input-wrap">
+          <label>Web App URL</label>
+          <input class="setup-input" id="setup-url-input" type="url" placeholder="https://script.google.com/macros/s/XXXXXXXXX/exec">
+        </div>
+        <div class="setup-nav">
+          <button class="btn-secondary btn-sm" onclick="setupBack()">← Back</button>
+          <button class="btn-primary btn-sm" onclick="testConnection()">Test Connection</button>
+        </div>
+        <div class="test-result" id="test-result"></div>
+      </div>
+
+      <!-- STEP 2: Done -->
+      <div class="setup-step" id="step-2">
+        <h3>🎉 All Set!</h3>
+        <p>Your RHU Queue System is now connected to Google Sheets. Every registration and status change will sync automatically. Your data is accessible anytime at <strong>script.google.com → Your Project → Spreadsheet</strong>.</p>
+        <div class="setup-instruction">
+          <ol>
+            <li>Data syncs to Google Sheets on every <strong>registration, call, and status update</strong></li>
+            <li>Open the Queue Board to see all patients and their live statuses</li>
+            <li>Use <strong>Export to Excel</strong> on the Queue Board to download a local copy anytime</li>
+            <li>To reconfigure, open the burger menu and tap <strong>⚙ Settings</strong></li>
+          </ol>
+        </div>
+        <div class="setup-nav">
+          <button class="btn-primary btn-sm" onclick="finishSetup()">Start Using the System ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <div class="nav-brand"><span class="dot"></span>RHU Queue System</div>
+  <div class="nav-right">
+    <div class="nav-sync" id="nav-sync" onclick="manualSync()" title="Sync with Google Sheets">
+      <span class="sync-dot" id="sync-dot"></span>
+      <span id="sync-label">Synced</span>
+    </div>
+    <div class="nav-time" id="nav-clock">—</div>
+    <button class="burger-btn" id="burger-btn" onclick="toggleDrawer()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="nav-drawer" id="nav-drawer">
+  <div class="nav-drawer-item active" id="di-kiosk"   onclick="switchView('kiosk',this)"><span class="di-icon">🖥</span> Kiosk</div>
+  <div class="nav-drawer-item"        id="di-board"   onclick="switchView('board',this)"><span class="di-icon">📋</span> Queue Board</div>
+  <div class="nav-drawer-item"        id="di-nurse"   onclick="switchView('nurse',this)"><span class="di-icon">🩺</span> Nurse Station</div>
+  <div class="nav-drawer-item"        id="di-display" onclick="switchView('display',this)"><span class="di-icon">📺</span> Display Board</div>
+  <div class="drawer-divider"></div>
+  <div class="nav-drawer-item"        onclick="openSettings()"><span class="di-icon">⚙️</span> Settings</div>
+</div>
+
+<!-- ============ KIOSK ============ -->
+<div class="view active" id="view-kiosk">
+  <div class="kiosk-wrap">
+    <div class="kiosk-header">
+      <div class="rhu-badge">🏥 Rural Health Unit</div>
+      <h1>Patient Queue Registration</h1>
+      <p>Select your service and fill in your details to get a queue number.</p>
+    </div>
+    <div class="section-title">Select Your Service</div>
+    <div class="service-grid">
+      <div class="service-card" onclick="selectService(this,'General Consultation','C')"><span class="badge">C</span><span class="svc-icon">🩺</span><div class="svc-name">General Consultation</div></div>
+      <div class="service-card" onclick="selectService(this,'Maternal & Child Health','M')"><span class="badge">M</span><span class="svc-icon">🤱</span><div class="svc-name">Maternal & Child Health</div></div>
+      <div class="service-card" onclick="selectService(this,'Immunization','I')"><span class="badge">I</span><span class="svc-icon">💉</span><div class="svc-name">Immunization</div></div>
+      <div class="service-card" onclick="selectService(this,'Dental Services','D')"><span class="badge">D</span><span class="svc-icon">🦷</span><div class="svc-name">Dental Services</div></div>
+      <div class="service-card" onclick="selectService(this,'Laboratory','L')"><span class="badge">L</span><span class="svc-icon">🧪</span><div class="svc-name">Laboratory</div></div>
+      <div class="service-card" onclick="selectService(this,'NCD / Chronic Disease','N')"><span class="badge">N</span><span class="svc-icon">🫀</span><div class="svc-name">NCD / Chronic Disease</div></div>
+      <div class="service-card" onclick="selectService(this,'PhilHealth / Medicines','P')"><span class="badge">P</span><span class="svc-icon">💊</span><div class="svc-name">PhilHealth / Medicines</div></div>
+      <div class="service-card" onclick="selectService(this,'Family Planning','FP')"><span class="badge">FP</span><span class="svc-icon">👨‍👩‍👧</span><div class="svc-name">Family Planning</div></div>
+    </div>
+    <div class="form-card">
+      <div class="section-title" style="margin-bottom:20px;">Personal Information</div>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px;">Please provide accurate information so we can confirm your slot.</p>
+      <div class="form-grid">
+        <div class="form-group"><label>First Name <span class="req">*</span></label><input type="text" id="f-fname" placeholder="Juan"></div>
+        <div class="form-group"><label>Last Name <span class="req">*</span></label><input type="text" id="f-lname" placeholder="dela Cruz"></div>
+        <div class="form-group"><label>Date of Birth <span class="req">*</span></label><input type="date" id="f-dob"></div>
+        <div class="form-group"><label>Sex <span class="req">*</span></label>
+          <select id="f-sex"><option value="">-- Select --</option><option>Male</option><option>Female</option></select>
+        </div>
+        <div class="form-group"><label>Civil Status <span class="req">*</span></label>
+          <select id="f-civil"><option value="">-- Select --</option><option>Single</option><option>Married</option><option>Widowed</option><option>Separated</option></select>
+        </div>
+        <div class="form-group"><label>Contact Number <span class="req">*</span></label><input type="tel" id="f-contact" placeholder="09XX XXX XXXX"></div>
+        <div class="form-group"><label>PhilHealth No. <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label><input type="text" id="f-philhealth" placeholder="XX-XXXXXXXXX-X"></div>
+        <div class="form-group"><label>Barangay <span class="req">*</span></label>
+          <select id="f-barangay">
+            <option value="">-- Select Barangay --</option>
+            <option>Bagakay</option><option>Bitaug</option><option>Cabugao</option><option>Del Carmen Poblacion</option>
+            <option>Domoyog</option><option>Guiob</option><option>Kahayag</option><option>Kanaparan</option>
+            <option>Lobo-a</option><option>Mabini</option><option>Paypay</option><option>Poneas</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="form-card">
+      <div class="section-title" style="margin-bottom:20px;">Visit Details</div>
+      <div style="margin-bottom:22px;">
+        <label style="font-size:0.85rem;font-weight:600;color:var(--text);display:block;margin-bottom:10px;">Visit Type <span style="color:var(--red);">*</span></label>
+        <div class="visit-type-grid">
+          <div class="vt-card" onclick="selectVisitType(this,'Walk-in')"><span class="vt-icon">🚶</span><span class="vt-label">Walk-in</span></div>
+          <div class="vt-card" onclick="selectVisitType(this,'Follow-up')"><span class="vt-icon">🔁</span><span class="vt-label">Follow-up</span></div>
+          <div class="vt-card" onclick="selectVisitType(this,'Referral')"><span class="vt-icon">📋</span><span class="vt-label">Referral</span></div>
+          <div class="vt-card" onclick="selectVisitType(this,'Appointment')"><span class="vt-icon">📅</span><span class="vt-label">Appointment</span></div>
+          <div class="vt-card" onclick="selectVisitType(this,'Emergency')"><span class="vt-icon">🚨</span><span class="vt-label">Emergency</span></div>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <label>Chief Complaint / Reason for Visit <span class="req">*</span></label>
+        <textarea id="f-complaint" maxlength="500" placeholder="Briefly describe your chief complaint..." oninput="updateCharCount(this)"></textarea>
+        <div class="char-count" id="complaint-count">0/500</div>
+      </div>
+      <div class="form-group">
+        <label>Additional Notes <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+        <textarea id="f-notes" maxlength="300" placeholder="Any other relevant information..."></textarea>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="submit-btn" onclick="submitAppointment()"><span>🎫</span> Get Queue Number</button>
+      <span class="reset-link" onclick="resetForm()">Clear form</span>
+    </div>
+    <div class="privacy-note">🔒 Your information is kept confidential and used only for scheduling purposes.</div>
+  </div>
+</div>
+
+<!-- ============ QUEUE BOARD ============ -->
+<div class="view" id="view-board">
+  <div class="board-wrap">
+    <div class="board-top">
+      <div>
+        <h2>📋 Today's Queue</h2>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:3px;" id="storage-status">Loading…</div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <button class="btn-secondary btn-sm" onclick="manualSync()">🔄 Refresh</button>
+        <button class="btn-secondary btn-sm" onclick="clearDone()">Clear Done</button>
+        <button class="btn-secondary btn-sm" style="color:var(--red);border-color:var(--red);" onclick="confirmClearAll()">🗑 Clear All</button>
+      </div>
+    </div>
+    <div class="board-stats">
+      <div class="stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">Total Registered</div></div>
+      <div class="stat-card orange"><div class="stat-num" id="stat-waiting">0</div><div class="stat-label">Waiting</div></div>
+      <div class="stat-card blue"><div class="stat-num" id="stat-called">0</div><div class="stat-label">Called / In Progress</div></div>
+      <div class="stat-card red"><div class="stat-num" id="stat-done">0</div><div class="stat-label">Done</div></div>
+    </div>
+    <!-- Sync/Export Bar -->
+    <div class="sync-bar">
+      <span class="sb-label">🗄 Google Sheets:</span>
+      <button class="btn-sheets" onclick="manualSync()">🔄 Sync Now</button>
+      <span class="sync-status-text" id="sync-status-text">—</span>
+      <div class="ml-auto" style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-excel" onclick="exportExcel('all')">⬇ Export All (.xlsx)</button>
+        <button class="btn-excel" style="background:#0f7b57;" onclick="exportExcel('today')">⬇ Today (.xlsx)</button>
+      </div>
+    </div>
+    <div class="queue-filters">
+      <button class="filter-btn active" onclick="filterQueue('all',this)">All</button>
+      <button class="filter-btn" onclick="filterQueue('waiting',this)">⏳ Waiting</button>
+      <button class="filter-btn" onclick="filterQueue('called',this)">📣 Called</button>
+      <button class="filter-btn" onclick="filterQueue('in-progress',this)">🔵 In Progress</button>
+      <button class="filter-btn" onclick="filterQueue('done',this)">✅ Done</button>
+    </div>
+    <div class="queue-table-wrap">
+      <table class="queue-table">
+        <thead><tr><th>Queue #</th><th>Patient</th><th>Service</th><th>Visit Type</th><th>Time</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="queue-tbody"><tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">Loading from Google Sheets…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ NURSE STATION ============ -->
+<div class="view" id="view-nurse">
+  <div class="nurse-wrap">
+    <h2 style="margin-bottom:6px;color:var(--primary-dark);">🩺 Nurse Station</h2>
+    <p style="color:var(--text-muted);margin-bottom:24px;font-size:0.9rem;">Mark patients as done after their visit. Data syncs to Google Sheets.</p>
+    <div class="dept-grid" id="dept-grid"></div>
+  </div>
+</div>
+
+<!-- ============ DISPLAY BOARD ============ -->
+<div class="view" id="view-display">
+  <div class="display-wrap">
+    <div class="display-header">
+      <h1>🏥 Rural Health Unit — Now Serving</h1>
+      <p id="display-date">—</p>
+    </div>
+    <div class="now-serving" id="now-serving-box">
+      <span class="ns-bell" id="ns-bell">🔔</span>
+      <div class="ns-label">Now Serving</div>
+      <div class="ns-num" id="display-now">—</div>
+      <div class="ns-info" id="display-now-info">—</div>
+    </div>
+    <div class="display-grid" id="display-dept-grid"></div>
+  </div>
+</div>
+
+<!-- RECEIPT MODAL -->
+<div class="modal-overlay" id="receipt-modal">
+  <div class="receipt-modal">
+    <div class="receipt-header"><h2>✅ Registration Successful!</h2><p>Your data has been saved to Google Sheets.</p></div>
+    <div class="receipt-body">
+      <div class="thermal" id="thermal-receipt"></div>
+      <div class="receipt-actions">
+        <button class="btn-primary" onclick="printReceipt()">🖨 Print Receipt</button>
+        <button class="btn-secondary" onclick="closeReceipt()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CALL OVERLAY -->
+<div class="call-overlay" id="call-overlay" onclick="dismissCallOverlay()">
+  <div class="call-popup">
+    <span class="cp-bell">🔔</span>
+    <div class="cp-now">Now Calling</div>
+    <div class="cp-num" id="cp-num">—</div>
+    <div class="cp-name" id="cp-name">—</div>
+    <div class="cp-svc" id="cp-svc">—</div>
+    <div class="cp-dismiss">Tap anywhere to dismiss</div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// =============================================
+// CONFIGURATION
+// =============================================
+const CONFIG_KEY = 'rhu_sheets_url';
+const COUNTER_KEY = 'rhu_queue_counters';
+let SHEETS_URL = localStorage.getItem(CONFIG_KEY) || '';
+
+// =============================================
+// STATE
+// =============================================
+let queue = [];
+// Counters are always recalculated from live Sheet data so every device stays in sync
+let queueCounters = {};
+let selectedService = null;
+let selectedServiceCode = null;
+let selectedVisitType = null;
+let currentFilter = 'all';
+let callOverlayTimer = null;
+let syncInterval = null;
+
+const DEPTS = [
+  { code:'C',  name:'General Consultation', icon:'🩺' },
+  { code:'M',  name:'Maternal & Child',      icon:'🤱' },
+  { code:'I',  name:'Immunization',          icon:'💉' },
+  { code:'D',  name:'Dental Services',       icon:'🦷' },
+  { code:'L',  name:'Laboratory',            icon:'🧪' },
+  { code:'N',  name:'NCD / Chronic',         icon:'🫀' },
+  { code:'P',  name:'PhilHealth/Medicines',  icon:'💊' },
+  { code:'FP', name:'Family Planning',       icon:'👨‍👩‍👧' },
+];
+
+// =============================================
+// GOOGLE SHEETS API
+// =============================================
+function sheetRequest(params) {
+  if (!SHEETS_URL) return Promise.reject('No Sheets URL configured');
+  const url = SHEETS_URL + '?' + new URLSearchParams(params).toString();
+  setSyncStatus('syncing');
+  return fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      setSyncStatus('ok');
+      return data;
+    })
+    .catch(err => {
+      setSyncStatus('offline');
+      throw err;
+    });
+}
+
+async function sheetsAppend(entry) {
+  try {
+    await sheetRequest({
+      action: 'append',
+      id: entry.id,
+      queueNum: entry.queueNum,
+      code: entry.code,
+      service: entry.service,
+      fname: entry.fname,
+      lname: entry.lname,
+      dob: entry.dob,
+      sex: entry.sex,
+      civil: entry.civil,
+      contact: entry.contact,
+      philhealth: entry.philhealth || '',
+      barangay: entry.barangay,
+      visitType: entry.visitType,
+      complaint: entry.complaint,
+      notes: entry.notes || '',
+      regTime: entry.regTime,
+      regDate: new Date().toLocaleDateString('en-PH'),
+    });
+  } catch(e) { console.warn('Sheets append failed:', e); }
+}
+
+async function sheetsUpdate(id, status) {
+  try {
+    await sheetRequest({ action: 'update', id, status });
+  } catch(e) { console.warn('Sheets update failed:', e); }
+}
+
+async function sheetsDelete(id) {
+  try {
+    await sheetRequest({ action: 'delete', id });
+  } catch(e) { console.warn('Sheets delete failed:', e); }
+}
+
+async function sheetsReadAll() {
+  if (!SHEETS_URL) return;
+  try {
+    setSyncStatus('syncing');
+    const data = await sheetRequest({ action: 'read' });
+    if (data.ok && data.rows) {
+      // Map sheet rows back to app objects
+      queue = data.rows.map(r => ({
+        id: r['ID'],
+        queueNum: r['Queue #'],
+        code: r['Code'],
+        service: r['Service'],
+        fname: r['First Name'],
+        lname: r['Last Name'],
+        fullName: (r['First Name'] || '') + ' ' + (r['Last Name'] || ''),
+        dob: r['Date of Birth'],
+        sex: r['Sex'],
+        civil: r['Civil Status'],
+        contact: r['Contact No'],
+        philhealth: r['PhilHealth No'],
+        barangay: r['Barangay'],
+        visitType: r['Visit Type'],
+        complaint: r['Chief Complaint'],
+        notes: r['Notes'],
+        status: (r['Status'] || 'Waiting').toLowerCase().replace(' ', '-'),
+        regTime: r['Registered Time'],
+        regFull: r['Date'],
+      }));
+
+      // ✅ Recalculate counters from actual sheet data so all devices agree
+      queueCounters = {};
+      queue.forEach(e => {
+        if (!e.code || !e.queueNum) return;
+        // Extract the numeric part after the dash, e.g. "C-007" → 7
+        const parts = e.queueNum.split('-');
+        const n = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(n)) {
+          queueCounters[e.code] = Math.max(queueCounters[e.code] || 0, n);
+        }
+      });
+      renderBoard(); renderNurse(); renderDisplay();
+      const el = document.getElementById('storage-status');
+      if (el) el.textContent = `✅ ${queue.length} record(s) loaded from Google Sheets`;
+      updateSyncTime();
+    }
+  } catch(e) {
+    setSyncStatus('offline');
+    const el = document.getElementById('storage-status');
+    if (el) el.textContent = '⚠️ Could not connect to Google Sheets';
+  }
+}
+
+function manualSync() {
+  sheetsReadAll();
+}
+
+function setSyncStatus(state) {
+  const dot   = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  const text  = document.getElementById('sync-status-text');
+  if (state === 'ok') {
+    dot.className = 'sync-dot'; label.textContent = 'Synced';
+    if (text) text.textContent = 'Last synced: ' + new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } else if (state === 'syncing') {
+    dot.className = 'sync-dot syncing'; label.textContent = 'Syncing…';
+  } else {
+    dot.className = 'sync-dot offline'; label.textContent = 'Offline';
+    if (text) text.textContent = 'Not connected to Sheets';
+  }
+}
+
+function updateSyncTime() {
+  const text = document.getElementById('sync-status-text');
+  if (text) text.textContent = 'Last synced: ' + new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// Auto-refresh every 10s so all open tabs/devices stay in sync
+function startAutoSync() {
+  if (syncInterval) clearInterval(syncInterval);
+  if (SHEETS_URL) {
+    syncInterval = setInterval(() => {
+      sheetsReadAll(); // always refresh regardless of active view
+    }, 10000);
+  }
+}
+
+// =============================================
+// SETUP WIZARD
+// =============================================
+let currentStep = 0;
+
+function showSetup() {
+  document.getElementById('setup-overlay').classList.remove('hidden');
+  goToStep(0);
+}
+
+function openSettings() {
+  closeDrawer();
+  showSetup();
+}
+
+function goToStep(n) {
+  document.querySelectorAll('.setup-step').forEach((s,i) => s.classList.toggle('active', i === n));
+  document.querySelectorAll('.step-dot').forEach((d,i) => {
+    d.classList.remove('active','done');
+    if (i === n) d.classList.add('active');
+    else if (i < n) d.classList.add('done');
+  });
+  currentStep = n;
+}
+
+function setupNext() { goToStep(currentStep + 1); }
+function setupBack() { goToStep(currentStep - 1); }
+
+async function testConnection() {
+  const url = document.getElementById('setup-url-input').value.trim();
+  const result = document.getElementById('test-result');
+  if (!url) { showTestResult(false, 'Please paste your Web App URL first.'); return; }
+  result.style.display = 'block';
+  result.className = 'test-result';
+  result.textContent = '⏳ Testing connection…';
+  try {
+    const resp = await fetch(url + '?action=ping');
+    const data = await resp.json();
+    if (data.ok) {
+      SHEETS_URL = url;
+      localStorage.setItem(CONFIG_KEY, url);
+      showTestResult(true, '✅ Connected! ' + data.message);
+      setTimeout(() => goToStep(2), 1000);
+    } else {
+      showTestResult(false, '❌ ' + (data.message || 'Connection failed'));
+    }
+  } catch(e) {
+    showTestResult(false, '❌ Could not reach the URL. Make sure the deployment is set to "Anyone" access.');
+  }
+}
+
+function showTestResult(ok, msg) {
+  const r = document.getElementById('test-result');
+  r.style.display = 'block';
+  r.className = 'test-result ' + (ok ? 'success' : 'error');
+  r.textContent = msg;
+}
+
+function finishSetup() {
+  document.getElementById('setup-overlay').classList.add('hidden');
+  startAutoSync();
+  sheetsReadAll();
+}
+
+function copyScript() {
+  const code = document.getElementById('apps-script-code').innerText.replace('Copy','').trim();
+  navigator.clipboard.writeText(code).then(() => showToast('📋 Script copied to clipboard!'));
+}
+
+// =============================================
+// BELL SOUND
+// =============================================
+function playCallSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [880, 1046, 1318].forEach((freq, i) => {
+      const delay = i * 0.32;
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      const osc2 = ctx.createOscillator(), gain2 = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc2.connect(gain2); gain2.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = freq;
+      osc2.type = 'sine'; osc2.frequency.value = freq * 2;
+      gain.gain.setValueAtTime(0, ctx.currentTime+delay);
+      gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime+delay+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+delay+0.9);
+      gain2.gain.setValueAtTime(0, ctx.currentTime+delay);
+      gain2.gain.linearRampToValueAtTime(0.08, ctx.currentTime+delay+0.02);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+delay+0.4);
+      osc.start(ctx.currentTime+delay);  osc.stop(ctx.currentTime+delay+0.95);
+      osc2.start(ctx.currentTime+delay); osc2.stop(ctx.currentTime+delay+0.45);
+    });
+  } catch(e) {}
+}
+
+// =============================================
+// CLOCK
+// =============================================
+function updateClock() {
+  const s = new Date().toLocaleString('en-PH',{weekday:'short',year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById('nav-clock').textContent = s;
+  document.getElementById('display-date').textContent = s;
+}
+setInterval(updateClock,1000); updateClock();
+
+// =============================================
+// BURGER / DRAWER
+// =============================================
+function toggleDrawer() {
+  const open = document.getElementById('nav-drawer').classList.toggle('open');
+  document.getElementById('burger-btn').classList.toggle('open', open);
+  document.getElementById('drawer-overlay').classList.toggle('open', open);
+}
+function closeDrawer() {
+  document.getElementById('nav-drawer').classList.remove('open');
+  document.getElementById('burger-btn').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+// =============================================
+// NAVIGATION
+// =============================================
+function switchView(name, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-drawer-item').forEach(d => d.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  if (el) el.classList.add('active');
+  if (name==='board')   { renderBoard(); sheetsReadAll(); }
+  if (name==='nurse')   { renderNurse(); sheetsReadAll(); }
+  if (name==='display') renderDisplay();
+  closeDrawer();
+}
+
+// =============================================
+// SERVICE & VISIT TYPE SELECTION
+// =============================================
+function selectService(el, name, code) {
+  document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedService = name; selectedServiceCode = code;
+}
+function selectVisitType(el, type) {
+  document.querySelectorAll('.vt-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedVisitType = type;
+}
+function updateCharCount(el) {
+  document.getElementById('complaint-count').textContent = el.value.length+'/500';
+}
+
+// =============================================
+// FORM HELPERS
+// =============================================
+function resetForm() {
+  ['f-fname','f-lname','f-dob','f-contact','f-philhealth','f-complaint','f-notes'].forEach(id => document.getElementById(id).value='');
+  ['f-sex','f-civil','f-barangay'].forEach(id => document.getElementById(id).selectedIndex=0);
+  document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.vt-card').forEach(c => c.classList.remove('selected'));
+  selectedService=null; selectedServiceCode=null; selectedVisitType=null;
+  document.getElementById('complaint-count').textContent='0/500';
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = false;
+  btn.innerHTML = '<span>🎫</span> Get Queue Number';
+}
+
+// =============================================
+// SUBMIT
+// =============================================
+async function submitAppointment() {
+  const fname    = document.getElementById('f-fname').value.trim();
+  const lname    = document.getElementById('f-lname').value.trim();
+  const dob      = document.getElementById('f-dob').value;
+  const sex      = document.getElementById('f-sex').value;
+  const civil    = document.getElementById('f-civil').value;
+  const contact  = document.getElementById('f-contact').value.trim();
+  const barangay = document.getElementById('f-barangay').value;
+  const complaint= document.getElementById('f-complaint').value.trim();
+
+  if (!fname||!lname||!dob||!sex||!civil||!contact||!barangay||!complaint) {
+    showToast('⚠️ Please fill in all required fields.','#d94f3d'); return;
+  }
+  if (!selectedServiceCode) { showToast('⚠️ Please select a service.','#d94f3d'); return; }
+  if (!selectedVisitType)   { showToast('⚠️ Please select a visit type.','#d94f3d'); return; }
+
+  // ── Disable button immediately ──────────────────────────────────────
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Checking queue…';
+
+  // ✅ Pull latest data from Google Sheets FIRST so we never duplicate a
+  //    queue number when multiple kiosks/tabs are open at the same time.
+  if (SHEETS_URL) {
+    try {
+      const data = await sheetRequest({ action: 'read' });
+      if (data.ok && data.rows) {
+        // Rebuild counters from live sheet so this device is up-to-date
+        queueCounters = {};
+        data.rows.forEach(r => {
+          const c  = r['Code'];
+          const qn = r['Queue #'];
+          if (!c || !qn) return;
+          const parts = qn.split('-');
+          const n = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(n)) queueCounters[c] = Math.max(queueCounters[c] || 0, n);
+        });
+        // Keep local queue in sync too
+        queue = data.rows.map(r => ({
+          id: r['ID'], queueNum: r['Queue #'], code: r['Code'], service: r['Service'],
+          fname: r['First Name'], lname: r['Last Name'],
+          fullName: (r['First Name']||'')+' '+(r['Last Name']||''),
+          dob: r['Date of Birth'], sex: r['Sex'], civil: r['Civil Status'],
+          contact: r['Contact No'], philhealth: r['PhilHealth No'],
+          barangay: r['Barangay'], visitType: r['Visit Type'],
+          complaint: r['Chief Complaint'], notes: r['Notes'],
+          status: (r['Status']||'Waiting').toLowerCase().replace(' ','-'),
+          regTime: r['Registered Time'], regFull: r['Date'],
+        }));
+      }
+    } catch(e) { /* Offline — use whatever counters we have locally */ }
+  }
+
+  // ── Generate the next queue number ──────────────────────────────────
+  const code = selectedServiceCode;
+  queueCounters[code] = (queueCounters[code] || 0) + 1;
+  const queueNum = code + '-' + String(queueCounters[code]).padStart(3, '0');
+
+  const entry = {
+    id: Date.now(),
+    queueNum, code,
+    fname, lname, fullName: fname+' '+lname,
+    dob, sex, civil, contact,
+    philhealth: document.getElementById('f-philhealth').value.trim(),
+    barangay, service: selectedService,
+    visitType: selectedVisitType,
+    complaint, notes: document.getElementById('f-notes').value.trim(),
+    status: 'waiting',
+    regTime: new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),
+    regFull: new Date().toLocaleDateString('en-PH'),
+  };
+
+  btn.innerHTML = '<span class="spinner"></span> Saving to Sheets…';
+  queue.push(entry);
+  await sheetsAppend(entry);
+
+  btn.disabled = false;
+  btn.innerHTML = '<span>🎫</span> Get Queue Number';
+
+  showReceipt(entry);
+  resetForm();
+}
+
+// =============================================
+// RECEIPT
+// =============================================
+function showReceipt(e) {
+  document.getElementById('thermal-receipt').innerHTML = `
+    <div class="t-center t-bold">RURAL HEALTH UNIT</div>
+    <div class="t-center" style="font-size:0.75rem;">OFFICIAL QUEUE SLIP</div>
+    <div class="t-div"></div>
+    <div class="t-center t-bold" style="font-size:0.75rem;">QUEUE NUMBER</div>
+    <div class="t-center t-big">${e.queueNum}</div>
+    <div class="t-center" style="font-size:0.75rem;color:#555;">${e.service}</div>
+    <div class="t-div"></div>
+    <div class="t-row"><span class="t-label">Name:</span><span>${e.fname} ${e.lname}</span></div>
+    <div class="t-row"><span class="t-label">Sex:</span><span>${e.sex}</span></div>
+    <div class="t-row"><span class="t-label">Barangay:</span><span>${e.barangay}</span></div>
+    ${e.philhealth?`<div class="t-row"><span class="t-label">PhilHealth:</span><span>${e.philhealth}</span></div>`:''}
+    <div class="t-div"></div>
+    <div class="t-row"><span class="t-label">Visit Type:</span><span>${e.visitType}</span></div>
+    <div class="t-row"><span class="t-label">Complaint:</span><span style="max-width:55%;text-align:right;font-size:0.78rem;">${e.complaint.substring(0,55)}${e.complaint.length>55?'...':''}</span></div>
+    <div class="t-div"></div>
+    <div class="t-row"><span class="t-label">Registered:</span><span>${e.regTime}</span></div>
+    <div class="t-div"></div>
+    <div class="t-center" style="font-size:0.75rem;">Please wait for your number to be called.</div>
+    <div class="t-center" style="font-size:0.75rem;margin-top:4px;">Thank you & God bless! 🙏</div>
+  `;
+  document.getElementById('receipt-modal').classList.add('open');
+}
+function printReceipt() { window.print(); }
+function closeReceipt() {
+  document.getElementById('receipt-modal').classList.remove('open');
+  showToast('✅ Registered: ' + queue[queue.length-1].queueNum + ' — Saved to Sheets!');
+}
+
+// =============================================
+// CALL PATIENT
+// =============================================
+function callPatient(id) {
+  const e = queue.find(q => q.id == id);
+  if (!e) return;
+  e.status = 'called';
+  renderBoard(); renderDisplay();
+  sheetsUpdate(e.id, 'called');
+  showToast('📣 Called: ' + e.queueNum);
+  playCallSound();
+  document.getElementById('cp-num').textContent  = e.queueNum;
+  document.getElementById('cp-name').textContent = e.fname+' '+e.lname;
+  document.getElementById('cp-svc').textContent  = e.service+' · '+e.visitType;
+  const overlay = document.getElementById('call-overlay');
+  overlay.classList.add('show');
+  if (callOverlayTimer) clearTimeout(callOverlayTimer);
+  callOverlayTimer = setTimeout(dismissCallOverlay, 5000);
+  const box = document.getElementById('now-serving-box');
+  const bell = document.getElementById('ns-bell');
+  box.classList.remove('ringing'); bell.classList.remove('show');
+  void box.offsetWidth;
+  box.classList.add('ringing'); bell.classList.add('show');
+  setTimeout(()=>{ box.classList.remove('ringing'); bell.classList.remove('show'); }, 1400);
+}
+function dismissCallOverlay() {
+  document.getElementById('call-overlay').classList.remove('show');
+  if (callOverlayTimer) clearTimeout(callOverlayTimer);
+}
+
+// =============================================
+// QUEUE BOARD
+// =============================================
+function renderBoard() {
+  const tbody = document.getElementById('queue-tbody');
+  const filtered = currentFilter==='all' ? queue : queue.filter(e=>e.status===currentFilter);
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px;">No patients in this filter.</td></tr>';
+  } else {
+    tbody.innerHTML = filtered.map(e => `
+      <tr>
+        <td><span class="queue-num">${e.queueNum}</span></td>
+        <td><strong>${e.fname} ${e.lname}</strong><br><span style="font-size:0.75rem;color:var(--text-muted);">${e.sex} · ${e.barangay}</span></td>
+        <td style="font-size:0.85rem;">${e.service}</td>
+        <td><span style="font-size:0.82rem;background:var(--surface2);padding:3px 9px;border-radius:6px;">${e.visitType}</span></td>
+        <td style="font-size:0.82rem;color:var(--text-muted);">${e.regTime}</td>
+        <td>${statusBadge(e.status)}</td>
+        <td>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            ${e.status==='waiting'     ? `<button class="action-btn call" onclick="callPatient('${e.id}')">📣 Call</button>` : ''}
+            ${e.status==='called'      ? `<button class="action-btn done" onclick="setStatus('${e.id}','in-progress')">▶ Start</button>` : ''}
+            ${e.status==='in-progress' ? `<button class="action-btn done" onclick="setStatus('${e.id}','done')">✅ Done</button>` : ''}
+            <button class="action-btn remove" onclick="removePatient('${e.id}')">✕</button>
+          </div>
+        </td>
+      </tr>`).join('');
+  }
+  document.getElementById('stat-total').textContent   = queue.length;
+  document.getElementById('stat-waiting').textContent = queue.filter(e=>e.status==='waiting').length;
+  document.getElementById('stat-called').textContent  = queue.filter(e=>e.status==='called'||e.status==='in-progress').length;
+  document.getElementById('stat-done').textContent    = queue.filter(e=>e.status==='done').length;
+  document.getElementById('storage-status').textContent = `📊 ${queue.length} record(s) — synced with Google Sheets`;
+}
+
+function statusBadge(s) {
+  return ({
+    waiting:      `<span class="status-badge waiting"><span class="dot-pulse yellow"></span>Waiting</span>`,
+    called:       `<span class="status-badge called"><span class="dot-pulse blue"></span>Called</span>`,
+    'in-progress':`<span class="status-badge in-progress"><span class="dot-pulse green"></span>In Progress</span>`,
+    done:         `<span class="status-badge done">✓ Done</span>`,
+  })[s] || s;
+}
+
+function filterQueue(f,btn) {
+  currentFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBoard();
+}
+
+async function setStatus(id, status) {
+  const e = queue.find(q => q.id == id);
+  if (!e) return;
+  e.status = status;
+  renderBoard(); renderNurse(); renderDisplay();
+  await sheetsUpdate(id, status);
+  showToast('✅ Updated: '+e.queueNum+' → '+status);
+}
+
+async function removePatient(id) {
+  queue = queue.filter(q => q.id != id);
+  renderBoard(); renderNurse(); renderDisplay();
+  await sheetsDelete(id);
+  showToast('🗑 Removed from queue and Sheets.');
+}
+
+async function clearDone() {
+  const done = queue.filter(q=>q.status==='done');
+  queue = queue.filter(q=>q.status!=='done');
+  renderBoard(); renderNurse(); renderDisplay();
+  for (const e of done) await sheetsDelete(e.id);
+  showToast(`🧹 Cleared ${done.length} completed record(s).`);
+}
+
+async function confirmClearAll() {
+  if (!confirm('⚠️ This will permanently delete ALL queue records from Google Sheets.\n\nAre you absolutely sure?')) return;
+  const all = [...queue];
+  queue = [];
+  renderBoard(); renderNurse(); renderDisplay();
+  for (const e of all) await sheetsDelete(e.id);
+  showToast('🗑 All records cleared from Sheets.');
+}
+
+// =============================================
+// EXCEL EXPORT (local download)
+// =============================================
+function exportExcel(mode) {
+  let data = queue;
+  const today = new Date().toISOString().split('T')[0];
+  let sheetLabel = 'All Records';
+  if (mode==='today') { data=queue.filter(e=>e.regFull===new Date().toLocaleDateString('en-PH')); sheetLabel='Today '+today; }
+  if (!data.length) { showToast('⚠️ No records to export.','#d94f3d'); return; }
+  const rows = data.map((e,i)=>({
+    'No.': i+1, 'Queue #': e.queueNum, 'Code': e.code, 'Service': e.service,
+    'First Name': e.fname, 'Last Name': e.lname, 'Date of Birth': e.dob,
+    'Sex': e.sex, 'Civil Status': e.civil, 'Contact No.': e.contact,
+    'PhilHealth No.': e.philhealth||'—', 'Barangay': e.barangay,
+    'Visit Type': e.visitType, 'Chief Complaint': e.complaint, 'Notes': e.notes||'',
+    'Status': e.status.charAt(0).toUpperCase()+e.status.slice(1).replace('-',' '),
+    'Registered Time': e.regTime, 'Date': e.regFull,
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols']=[{wch:5},{wch:10},{wch:7},{wch:26},{wch:16},{wch:16},{wch:14},{wch:8},{wch:12},{wch:14},{wch:16},{wch:20},{wch:14},{wch:40},{wch:30},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws, sheetLabel);
+  XLSX.writeFile(wb, `RHU_Queue_${mode}_${today}.xlsx`);
+  showToast(`✅ Exported ${data.length} records.`);
+}
+
+// =============================================
+// NURSE STATION
+// =============================================
+function renderNurse() {
+  document.getElementById('dept-grid').innerHTML = DEPTS.map(dept=>{
+    const dq = queue.filter(e=>e.code===dept.code && e.status!=='done');
+    const opts = dq.map(e=>`<option value="${e.id}">${e.queueNum} – ${e.fname} ${e.lname} (${e.status})</option>`).join('');
+    const items = dq.length===0
+      ? `<div class="empty-dept"><div class="empty-icon">🎉</div>No patients waiting</div>`
+      : dq.map(e=>`
+        <div class="dept-queue-item">
+          <div class="dq-num">${e.queueNum}</div>
+          <div class="dq-info"><div class="dq-name">${e.fname} ${e.lname}</div><div class="dq-meta">${e.visitType} · ${e.barangay}</div></div>
+          ${e.status==='waiting'
+            ? `<button class="dept-done-btn waiting-btn" onclick="callPatient('${e.id}');renderNurse()">📣 Call</button>`
+            : (e.status==='called'||e.status==='in-progress')
+            ? `<button class="dept-done-btn" onclick="setStatus('${e.id}','done');renderNurse()">✅ Done</button>`
+            : ''}
+        </div>`).join('');
+    return `
+      <div class="dept-card">
+        <div class="dept-card-header">
+          <span class="dept-icon">${dept.icon}</span>
+          <div><div class="dept-name">${dept.name}</div><div style="font-size:0.72rem;opacity:0.7;">Code: ${dept.code}</div></div>
+          <div class="dept-count">${dq.length}</div>
+        </div>
+        <div class="dept-card-body">
+          <div class="dept-select-wrap">
+            <label>Quick Select & Mark Done</label>
+            <select class="dept-select" id="dept-sel-${dept.code}" onchange="quickDone('${dept.code}')">
+              <option value="">— Select patient —</option>${opts}
+            </select>
+          </div>
+          <div class="dept-queue-list">${items}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function quickDone(code) {
+  const sel = document.getElementById('dept-sel-'+code);
+  const id = sel.value;
+  if (!id) return;
+  setStatus(id,'done'); renderNurse();
+}
+
+// =============================================
+// DISPLAY BOARD
+// =============================================
+function renderDisplay() {
+  const active = queue.filter(e=>e.status==='in-progress'||e.status==='called');
+  const now = active[active.length-1];
+  document.getElementById('display-now').textContent      = now ? now.queueNum : '—';
+  document.getElementById('display-now-info').textContent = now ? now.fname+' '+now.lname+' · '+now.service : 'Waiting for next patient';
+  document.getElementById('display-dept-grid').innerHTML = DEPTS.map(dept=>{
+    const waiting = queue.filter(e=>e.code===dept.code&&e.status==='waiting').map(e=>e.queueNum);
+    const inProg  = queue.filter(e=>e.code===dept.code&&(e.status==='in-progress'||e.status==='called')).map(e=>e.queueNum);
+    return `
+      <div class="display-card">
+        <div class="dc-dept">${dept.icon} ${dept.name}</div>
+        <div class="dc-nums">${inProg.length?inProg.join(', '):'—'}</div>
+        <div class="dc-next">Next: ${waiting.length?waiting[0]:'—'} &nbsp;|&nbsp; ${waiting.length} waiting</div>
+      </div>`;
+  }).join('');
+}
+
+// =============================================
+// TOAST
+// =============================================
+function showToast(msg,bg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.style.background=bg||'var(--primary)';
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500);
+}
+
+// =============================================
+// INIT
+// =============================================
+renderNurse(); renderDisplay();
+setSyncStatus(SHEETS_URL ? 'ok' : 'offline');
+
+if (!SHEETS_URL) {
+  // First time — show setup wizard
+  showSetup();
+} else {
+  // Already configured — load data
+  document.getElementById('setup-overlay').classList.add('hidden');
+  sheetsReadAll();
+  startAutoSync();
+}
+</script>
+</body>
+</html>
